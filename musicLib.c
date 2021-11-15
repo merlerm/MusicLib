@@ -109,8 +109,11 @@ void TA1_0_IRQHandler(void)
 
         /* Update new values for the note that will soon be played */
         timerUpConfig.timerPeriod = (uint_fast16_t) (song_array[counter].tempo * songTempo); /* Note tempo */
-        Timer_A_configureUpMode(TIMER_A1_BASE, &timerUpConfig);
-        Timer_A_startCounter(TIMER_A1_BASE, TIMER_A_UP_MODE);
+
+        if (song_array[counter].tempo != 0) {
+            Timer_A_configureUpMode(TIMER_A1_BASE, &timerUpConfig);
+            Timer_A_startCounter(TIMER_A1_BASE, TIMER_A_UP_MODE);
+        }
 
         /* Note frequency values */
         upConfig.timerPeriod = song_array[counter].frequency.clock;
@@ -125,21 +128,23 @@ void TA1_0_IRQHandler(void)
         Timer_A_startCounter(TIMER_A0_BASE, TIMER_A_UP_MODE);
         Timer_A_initCompare(TIMER_A0_BASE, &compareConfig_PWM);
 
-        /* Advance skip and counter values */
-        skip++;
-        counter++;
-
         /* End of song check */
         if (song_array[counter].frequency.clock == 1) {
-            repetition_counter--;
-            if (repetition_counter < 1) { /* Stop song */
-                Timer_A_stopTimer(TIMER_A1_BASE);
-                Timer_A_stopTimer(TIMER_A0_BASE);
-                Timer_A_disableCaptureCompareInterrupt(TIMER_A1_BASE, TIMER_A_CAPTURECOMPARE_REGISTER_0);
+            if(repetition_counter != 0) {
+                repetition_counter--;
+                if (repetition_counter < 1) { /* Stop song */
+                    Timer_A_stopTimer(TIMER_A1_BASE);
+                    Timer_A_stopTimer(TIMER_A0_BASE);
+                    Timer_A_disableCaptureCompareInterrupt(TIMER_A1_BASE, TIMER_A_CAPTURECOMPARE_REGISTER_0);
+                }
             }
             /* New repetition */
             config_index = 0;
             counter = 0;
+        } else {
+            /* Advance skip and counter values */
+            skip++;
+            counter++;
         }
     }
     else /* Skip this cycle */
