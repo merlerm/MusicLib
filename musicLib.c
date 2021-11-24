@@ -79,6 +79,8 @@ void _timerInit()
  */
 void _musicLibInit()
 {
+    CS_setDCOCenteredFrequency(CS_DCO_FREQUENCY_6);
+    CS_initClockSignal(CS_SMCLK, CS_DCOCLK_SELECT, CS_CLOCK_DIVIDER_1);
     _buzzerInit();
     _timerInit();
 }
@@ -149,7 +151,7 @@ void TA1_0_IRQHandler(void)
     }
     else /* Skip this cycle */
     {
-        skip = (skip + 1) % DOUBLE;
+        skip = (skip + 1) % (DOUBLE * 2);
     }
 
     Timer_A_clearCaptureCompareInterrupt(TIMER_A1_BASE, TIMER_A_CAPTURECOMPARE_REGISTER_0);
