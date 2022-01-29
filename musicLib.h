@@ -40,7 +40,7 @@
 /******************************************************************************
 *                              CONFIG END MARKER                              *
 ******************************************************************************/
-#define END_CONFIG       0
+#define END_CONFIG   0
 
 /******************************************************************************
 *                                RANGE 2 NOTES                                *
@@ -414,5 +414,27 @@ void _musicLibInit();
  * Given a song, a precise config of that song and how many times (repetition) the user wants to hear that song, it plays the melody.
  */
 void playSong(const Note_t *song, const Note_config_t *config, const uint_fast16_t repetition);
+
+/**
+ * Returns the number of notes in a song.
+ * @song: song you want to get the length of
+ */
+uint16_t getSongLength(const Note_t *song);
+
+/**
+ * Pauses a song (allows for it to be resumed later)
+ */
+void pauseSong();
+
+/**
+ * Resumes a paused song
+ */
+void resumeSong();
+
+/**
+ * Shifts a song forwards or backwards by a number of notes
+ * @shift: the amount you want to shift (negative for backwards)
+ */
+void shiftSong(int_fast16_t shift);
 
 #endif /* MUSICLIB_H_ */

@@ -24,44 +24,45 @@
 const Note_t *song_array;
 const Note_config_t *config_array;
 
-uint_fast16_t counter = 0;        /* Tracks the current note being played */
-uint_fast16_t songTempo = 0;      /* Global tempo of the song */
-float songVolume = 0;             /* Global volume of the song */
-uint_fast16_t config_index = 1;   /* Index of the current config value */
+uint_fast16_t counter = 0; /* Tracks the current note being played */
+uint_fast16_t songTempo = 0; /* Global tempo of the song */
+float songVolume = 0; /* Global volume of the song */
+uint_fast16_t config_index = 1; /* Index of the current config value */
 uint_fast16_t repetition_counter; /* Tracks the number of repetitions left */
 
 /* Timer_A UpMode Configuration Parameter (used for the buzzer) */
 Timer_A_UpModeConfig timerUpConfig = {
-                                      TIMER_A_CLOCKSOURCE_SMCLK,              // SMCLK Clock Source
-                                      TIMER_A_CLOCKSOURCE_DIVIDER_64,         // SMCLK/1 = 3MHz
-                                      0,                                      // Frequency value
-                                      TIMER_A_TAIE_INTERRUPT_DISABLE,         // Disable Timer interrupt
-                                      TIMER_A_CCIE_CCR0_INTERRUPT_ENABLE,     // Enable CCR0 interrupt
-                                      TIMER_A_DO_CLEAR                        // Clear value
-                                      };
+        TIMER_A_CLOCKSOURCE_SMCLK,              // SMCLK Clock Source
+        TIMER_A_CLOCKSOURCE_DIVIDER_64,         // SMCLK/1 = 3MHz
+        0,                                      // Frequency value
+        TIMER_A_TAIE_INTERRUPT_DISABLE,         // Disable Timer interrupt
+        TIMER_A_CCIE_CCR0_INTERRUPT_ENABLE,     // Enable CCR0 interrupt
+        TIMER_A_DO_CLEAR                        // Clear value
+        };
 
 /* Timer_A Compare Configuration Parameter (PWM) */
 Timer_A_CompareModeConfig compareConfig_PWM = {
-                                               TIMER_A_CAPTURECOMPARE_REGISTER_4,          // Use CCR3
-                                               TIMER_A_CAPTURECOMPARE_INTERRUPT_DISABLE,   // Disable CCR interrupt
-                                               TIMER_A_OUTPUTMODE_TOGGLE_SET,              // Toggle output but
-                                               0                                           // Volume Duty Cycle
-                                               };
+TIMER_A_CAPTURECOMPARE_REGISTER_4,                  // Use CCR3
+        TIMER_A_CAPTURECOMPARE_INTERRUPT_DISABLE,   // Disable CCR interrupt
+        TIMER_A_OUTPUTMODE_TOGGLE_SET,              // Toggle output but
+        0                                           // Volume Duty Cycle
+        };
 
 /* Timer_A Up Configuration Parameter (used for tempo) */
 Timer_A_UpModeConfig upConfig = {
-                                 TIMER_A_CLOCKSOURCE_SMCLK,              // SMCLK = 3 MhZ
-                                 TIMER_A_CLOCKSOURCE_DIVIDER_1,          // SMCLK/12 = 250 KhZ
-                                 0,                                      // Tick period
-                                 TIMER_A_TAIE_INTERRUPT_DISABLE,         // Disable Timer interrupt
-                                 TIMER_A_CCIE_CCR0_INTERRUPT_DISABLE,    // Disable CCR0 interrupt
-                                 TIMER_A_DO_CLEAR                        // Clear value
-                                 };
+TIMER_A_CLOCKSOURCE_SMCLK,                      // SMCLK = 3 MhZ
+        TIMER_A_CLOCKSOURCE_DIVIDER_1,          // SMCLK/12 = 250 KhZ
+        0,                                      // Tick period
+        TIMER_A_TAIE_INTERRUPT_DISABLE,         // Disable Timer interrupt
+        TIMER_A_CCIE_CCR0_INTERRUPT_DISABLE,    // Disable CCR0 interrupt
+        TIMER_A_DO_CLEAR                        // Clear value
+        };
 
 void _buzzerInit()
 {
     /* Configures P2.7 to PM_TA0.4 for using Timer PWM to control the buzzer */
-    GPIO_setAsPeripheralModuleFunctionOutputPin(GPIO_PORT_P2, GPIO_PIN7, GPIO_PRIMARY_MODULE_FUNCTION);
+    GPIO_setAsPeripheralModuleFunctionOutputPin(GPIO_PORT_P2, GPIO_PIN7,
+                                                GPIO_PRIMARY_MODULE_FUNCTION);
     /* Configuring Timer_A0 for Up Mode */
     Timer_A_configureUpMode(TIMER_A0_BASE, &upConfig);
 }
@@ -87,81 +88,100 @@ void _musicLibInit()
 
 #define VOLUME_LOWERBOUND 15   /* Volume threshold under which the volume is too low to hear */
 
-uint_fast16_t max(uint_fast16_t num1, uint_fast16_t num2) {
-    return (num1 > num2 ) ? num1 : num2;
+uint_fast16_t max(uint_fast16_t num1, uint_fast16_t num2)
+{
+    return (num1 > num2) ? num1 : num2;
 }
 
 /* Counter used to skip clock cycles and make the song slower, proportional to the
  * longest note value. Used to have slower songs and prevent overflow on the timer value */
 uint_fast16_t skip = 0;
 
+void handleTimer()
+{
+    if (config_array[config_index].index == END_CONFIG) /* Reset config if at the end */
+        config_index = 0;
+
+    if (config_array[config_index].index == (counter + 1))
+    { /* If time to change config values, update */
+        songTempo = config_array[config_index].tempo % TEMPO_UPPERBOUND;
+        songVolume = config_array[config_index].volume;
+        config_index++;
+    }
+
+    /* Update new values for the note that will soon be played */
+    timerUpConfig.timerPeriod = (uint_fast16_t) (song_array[counter].tempo
+            * songTempo); /* Note tempo */
+
+    if (song_array[counter].tempo != 0)
+    {
+        Timer_A_configureUpMode(TIMER_A1_BASE, &timerUpConfig);
+        Timer_A_startCounter(TIMER_A1_BASE, TIMER_A_UP_MODE);
+    }
+
+    /* Note frequency values */
+    upConfig.timerPeriod = song_array[counter].frequency.clock;
+    upConfig.clockSourceDivider = song_array[counter].frequency.divider;
+
+    /* Note volume (PWM normalized with respect to the note's clock value) */
+    uint_fast16_t note_volume =
+            (uint_fast16_t) ((float) ((song_array[counter].frequency.clock / 100)
+                    * songVolume));
+    compareConfig_PWM.compareValue = max(note_volume, VOLUME_LOWERBOUND);
+
+    /* Update timer values */
+    Timer_A_configureUpMode(TIMER_A0_BASE, &upConfig);
+    Timer_A_startCounter(TIMER_A0_BASE, TIMER_A_UP_MODE);
+    Timer_A_initCompare(TIMER_A0_BASE, &compareConfig_PWM);
+
+    /* End of song check */
+    if (song_array[counter].frequency.clock == 1)
+    {
+        if (repetition_counter != 0)
+        {
+            repetition_counter--;
+            if (repetition_counter < 1)
+            { 
+                /* Stop song */
+                Timer_A_stopTimer(TIMER_A1_BASE);
+                Timer_A_stopTimer(TIMER_A0_BASE);
+                Timer_A_disableCaptureCompareInterrupt(
+                        TIMER_A1_BASE, TIMER_A_CAPTURECOMPARE_REGISTER_0);
+            }
+        }
+        /* New repetition */
+        config_index = 0;
+        counter = 0;
+    }
+    else
+    {
+        /* Advance skip and counter values */
+        skip++;
+        counter++;
+    }
+}
+
 /* Timer handler where the single notes are played */
 void TA1_0_IRQHandler(void)
 {
     if (skip == 0) /* Check for skip cycle */
     {
-        if (config_array[config_index].index == END_CONFIG) /* Reset config if at the end */
-            config_index = 0;
-
-        if (config_array[config_index].index == (counter + 1)) { /* If time to change config values, update */
-            songTempo = config_array[config_index].tempo % TEMPO_UPPERBOUND;
-            songVolume = config_array[config_index].volume;
-            config_index++;
-        }
-
-        /* Update new values for the note that will soon be played */
-        timerUpConfig.timerPeriod = (uint_fast16_t) (song_array[counter].tempo * songTempo); /* Note tempo */
-
-        if (song_array[counter].tempo != 0) {
-            Timer_A_configureUpMode(TIMER_A1_BASE, &timerUpConfig);
-            Timer_A_startCounter(TIMER_A1_BASE, TIMER_A_UP_MODE);
-        }
-
-        /* Note frequency values */
-        upConfig.timerPeriod = song_array[counter].frequency.clock;
-        upConfig.clockSourceDivider = song_array[counter].frequency.divider;
-
-        /* Note volume (PWM normalized with respect to the note's clock value) */
-        uint_fast16_t note_volume = (uint_fast16_t) ((float) ((song_array[counter].frequency.clock / 100) * songVolume));
-        compareConfig_PWM.compareValue = max(note_volume, VOLUME_LOWERBOUND);
-
-        /* Update timer values */
-        Timer_A_configureUpMode(TIMER_A0_BASE, &upConfig);
-        Timer_A_startCounter(TIMER_A0_BASE, TIMER_A_UP_MODE);
-        Timer_A_initCompare(TIMER_A0_BASE, &compareConfig_PWM);
-
-        /* End of song check */
-        if (song_array[counter].frequency.clock == 1) {
-            if(repetition_counter != 0) {
-                repetition_counter--;
-                if (repetition_counter < 1) { /* Stop song */
-                    Timer_A_stopTimer(TIMER_A1_BASE);
-                    Timer_A_stopTimer(TIMER_A0_BASE);
-                    Timer_A_disableCaptureCompareInterrupt(TIMER_A1_BASE, TIMER_A_CAPTURECOMPARE_REGISTER_0);
-                }
-            }
-            /* New repetition */
-            config_index = 0;
-            counter = 0;
-        } else {
-            /* Advance skip and counter values */
-            skip++;
-            counter++;
-        }
+        handleTimer();
     }
     else /* Skip this cycle */
     {
         skip = (skip + 1) % (DOUBLE * 2);
     }
-
-    Timer_A_clearCaptureCompareInterrupt(TIMER_A1_BASE, TIMER_A_CAPTURECOMPARE_REGISTER_0);
+    Timer_A_clearCaptureCompareInterrupt(TIMER_A1_BASE,
+                                         TIMER_A_CAPTURECOMPARE_REGISTER_0);
 }
 
 /**
  * The main function of the library.
  * Given a song, a precise config of that song and how many times (repetition) the user wants to hear that song, it plays the melody.
  */
-void playSong(const Note_t *song, const Note_config_t *config, const uint_fast16_t repetition)
+void playSong(const Note_t *song, const Note_config_t *config,
+              const uint_fast16_t repetition)
 {
     /* Initialize song configurations */
     songTempo = config[0].tempo % TEMPO_UPPERBOUND;
@@ -170,12 +190,69 @@ void playSong(const Note_t *song, const Note_config_t *config, const uint_fast16
     Timer_A_configureUpMode(TIMER_A1_BASE, &timerUpConfig);
 
     /* Initialize global variables */
+    counter = 0;
     song_array = song;
     config_array = config;
     repetition_counter = repetition;
 
+    Timer_A_clearCaptureCompareInterrupt(TIMER_A1_BASE,
+                                            TIMER_A_CAPTURECOMPARE_REGISTER_0);
     /* Start TIMER_A0_BASE & TIMER_A1_BASE */
     Timer_A_startCounter(TIMER_A0_BASE, TIMER_A_UP_MODE);
     Timer_A_initCompare(TIMER_A0_BASE, &compareConfig_PWM);
     Timer_A_startCounter(TIMER_A1_BASE, TIMER_A_UP_MODE);
+}
+
+uint16_t getSongLength(const Note_t *song) {
+    volatile uint8_t i = 0;
+    while(song[i].frequency.clock != 1) i++;
+    return i;
+}
+
+void pauseSong() {
+    /* Stop song */
+    Timer_A_stopTimer(TIMER_A1_BASE);
+    Timer_A_stopTimer(TIMER_A0_BASE);
+    Timer_A_disableCaptureCompareInterrupt(
+            TIMER_A1_BASE, TIMER_A_CAPTURECOMPARE_REGISTER_0);
+
+    compareConfig_PWM.compareValue = VOLUME_LOWERBOUND;
+    /* Update timer values */
+    Timer_A_initCompare(TIMER_A0_BASE, &compareConfig_PWM);
+}
+
+void resumeSong() {
+    /* Initialize song configurations */
+    Timer_A_configureUpMode(TIMER_A1_BASE, &timerUpConfig);
+    Timer_A_clearCaptureCompareInterrupt(TIMER_A1_BASE,
+                                         TIMER_A_CAPTURECOMPARE_REGISTER_0);
+    /* Start TIMER_A0_BASE & TIMER_A1_BASE */
+    Timer_A_startCounter(TIMER_A0_BASE, TIMER_A_UP_MODE);
+    Timer_A_initCompare(TIMER_A0_BASE, &compareConfig_PWM);
+    Timer_A_startCounter(TIMER_A1_BASE, TIMER_A_UP_MODE);
+}
+
+void shiftSong(int_fast16_t shift) {
+    /* temp has new counter value after shift */
+    int_fast16_t temp = counter;
+    temp += shift;
+    /* Correct counter if out of bounds */
+    if (shift < 0) {
+        if (temp < 0) counter = 0;
+        else counter += shift;
+    }
+    else {
+        /* Shift song accordingly */
+        uint_fast16_t count = 0;
+        while ((song_array[counter].frequency.clock != 1) && count < shift) {
+                counter += 1;
+                count += 1;
+        }
+    }
+    /* Shift config index accordingly */
+    config_index = 0;
+    while (config_array[config_index].index < counter && config_array[config_index].index != 0) config_index++;
+    /* Set new timer settings */
+    songTempo = config_array[config_index - 1].tempo % TEMPO_UPPERBOUND;
+    songVolume = config_array[config_index - 1].volume;
 }

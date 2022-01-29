@@ -54,8 +54,8 @@ const Note_t PIRATES[] = {
 };
 
 const Note_config_t PIRATES_CONFIG[] = {
-    { 1, MEDIUM, PIANISSIMO }, { 38, MEDIUM, PIANO },
-    { 71, FAST, MODERATO }, { 107, FAST, FORTE },
+    { 1, MEDIUM, PIANISSIMO }, { 36, MEDIUM, PIANO },
+    { 69, FAST, MODERATO }, { 105, FAST, FORTE },
     { END_CONFIG, 0, 0 }
 };
 
@@ -138,7 +138,7 @@ const Note_t SUPER_MARIO[] = {
 };
 
 const Note_config_t SUPER_MARIO_CONFIG[] = {
-    { 1, ULTRA_FAST, PIANISSIMO },
+    { 1, ULTRA_FAST, MODERATO },
     { END_CONFIG, 0, 0 }
 };
 
